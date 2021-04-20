@@ -4,6 +4,7 @@ import bz2
 class GeoJSONParser(object):
     def __init__(self, filename):
         self.i = 0
+        print(filename)
         self.data = json.load(open(filename))
         self.features = self.data.get('features', [])
         self.num_features = len(self.features)
@@ -26,10 +27,15 @@ class GeoJSONParser(object):
 
 class GeoJSONLineParser(GeoJSONParser):
     def __init__(self, filename):
+        print(filename)
         if filename.endswith(".bz2"):
             self.f = bz2.BZ2File(filename)
         else:
-            self.f = open(filename)
+            self.f = open(filename, 'r')
 
+        with self.f as f:
+            content = f.readlines()
+        self.content = iter([x.rstrip() for x in content])
+        
     def next_feature(self):
-        return json.loads(self.f.next().rstrip())
+        return json.loads(next(self.content))

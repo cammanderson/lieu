@@ -112,6 +112,9 @@ def latlon_to_decimal(latitude, longitude):
     if latitude is None or longitude is None:
         return None, None
 
+    # TMP: Disables parsing
+    return latitude, longitude
+
     latitude = safe_decode(latitude).strip(u' ,;|')
     longitude = safe_decode(longitude).strip(u' ,;|')
 

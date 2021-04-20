@@ -69,7 +69,7 @@ class DedupeResponse(object):
 
     @classmethod
     def random_guid(cls):
-        return uuid.uuid4().get_hex()
+        return uuid.uuid4().hex
 
     @classmethod
     def add_guid(cls, value, guid):
@@ -111,9 +111,9 @@ class DedupeResponse(object):
 
     @classmethod
     def add_possible_dupe(cls, response, value, dupe, is_canonical, explain=None):
-        if dupe.status in (cls.classifications.EXACT_DUPE, cls.classifications.LIKELY_DUPE):
+        if dupe.dupe_class_map[dupe.status] in (dupe.classifications.EXACT_DUPE, dupe.classifications.LIKELY_DUPE):
             key = 'same_as'
-        elif dupe.status == cls.classifications.NEEDS_REVIEW:
+        elif dupe.dupe_class_map[dupe.status] == dupe.classifications.NEEDS_REVIEW:
             key = 'possibly_same_as'
         else:
             return response
@@ -121,7 +121,7 @@ class DedupeResponse(object):
         response.setdefault(key, [])
         dupe_response = {
             'is_canonical': is_canonical,
-            'classification': dupe.status,
+            'classification': dupe.dupe_class_map[dupe.status],
             'object': value,
         }
 

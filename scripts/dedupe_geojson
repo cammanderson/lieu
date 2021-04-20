@@ -1,4 +1,4 @@
-#!/usr/env/bin python -u
+#!/usr/bin/python3
 
 import argparse
 import leveldb
@@ -55,16 +55,16 @@ def id_features(filenames):
 
 
 def dupe_response(feature_id, value, dupe_pairs, features_db, dupes):
-    value = json.loads(value)
-    is_dupe = any((dupe.status in (duplicate_status.EXACT_DUPLICATE, duplicate_status.LIKELY_DUPLICATE) for other_id, dupe in dupe_pairs.get(feature_id, {}).items()))
+    value = json.loads(value.decode())
+    is_dupe = any((dupe.status in (duplicate_status.EXACT_DUPLICATE, duplicate_status.LIKELY_DUPLICATE) for other_id, dupe in dupe_pairs.get(feature_id.decode(), {}).items()))
     if not is_dupe:
         guid = value_guid(value)
         DedupeResponse.add_guid(value, guid)
     response = DedupeResponse.base_response(value, is_dupe)
 
-    if feature_id in dupe_pairs:
-        for other_id, dupe in sorted(dupe_pairs[feature_id].items(), reverse=True):
-            other_value = json.loads(features_db.Get(db_key(other_id)))
+    if feature_id.decode() in dupe_pairs:
+        for other_id, dupe in sorted(dupe_pairs[feature_id.decode()].items(), reverse=True):
+            other_value = json.loads(features_db.Get(db_key(other_id).encode()).decode())
 
             is_canonical = other_id not in dupes
 
@@ -74,12 +74,13 @@ def dupe_response(feature_id, value, dupe_pairs, features_db, dupes):
                 other_guid = value_guid(other_value)
                 DedupeResponse.add_guid(other_value, other_guid)
 
-            DedupeResponse.add_possible_dupe(response, value=other_value, classification=classification, is_canonical=is_canonical, similarity=dupe.sim, explain=explain)
+            # DedupeResponse.add_possible_dupe(response, value=other_value, classification=classification, is_canonical=is_canonical, similarity=dupe.sim, explain=explain)
+            DedupeResponse.add_possible_dupe(response, value=other_value, dupe=dupe, is_canonical=is_canonical, explain=explain)
     return response
 
 
 def db_get_address(features_db, feature_id):
-    result = features_db.Get(db_key(feature_id))
+    result = features_db.Get(db_key(feature_id).encode()).decode()
     if result:
         return Address.from_geojson(json.loads(result))
     else:
@@ -89,14 +90,14 @@ def db_get_address(features_db, feature_id):
 def is_address_dupe(canonical, other, dupe_pairs, dupes, with_unit=False, fuzzy_street_names=False):
     address_languages = AddressDeduper.combined_place_languages(canonical, other)
     dupe = AddressDeduper.address_dupe_status(canonical, other, languages=address_languages, fuzzy_street_name=fuzzy_street_names)
-    if dupe.status in (duplicate_status.EXACT_DUPLICATE, duplicate_status.LIKELY_DUPLICATE) and (not with_unit or AddressDeduper.is_sub_building_dupe(canonical, other, languages=languages)):
+    if dupe.status in (duplicate_status.EXACT_DUPLICATE, duplicate_status.LIKELY_DUPLICATE) and (not with_unit or AddressDeduper.is_sub_building_dupe(canonical, other, languages=address_languages)):
         dupe_pairs[other_id][canonical_id] = dupe
         dupes[other_id] = max(dupe, dupes.get(other_id, NULL_DUPE))
         return True
     return False
 
 
-def is_name_address_dupe(canoncal, other, dupe_pairs, dupes, word_index=None,
+def is_name_address_dupe(canonical, other, dupe_pairs, dupes, word_index=None,
                          name_dupe_threshold=DedupeResponse.default_name_dupe_threshold,
                          needs_review_threshold=DedupeResponse.default_name_review_threshold,
                          with_address=True,
@@ -269,7 +270,7 @@ if __name__ == '__main__':
     print('Word index file: {}'.format(word_index_filename))
 
     temp_filename = os.path.join(args.output_dir, args.temp_filename)
-    map_file = open(temp_filename, 'w')
+    map_file = open(temp_filename, 'wb')
 
     print('Near-dupe tempfile: {}'.format(temp_filename))
 
@@ -298,7 +299,7 @@ if __name__ == '__main__':
     batch = leveldb.WriteBatch()
     for feature_id, feature in id_features(args.files):
         DedupeResponse.add_random_guid(feature)
-        batch.Put(db_key(feature_id), json.dumps(feature))
+        batch.Put(db_key(feature_id).encode(), json.dumps(feature).encode())
         if feature_id % 1000 == 0 and feature_id > 0:
             features_db.Write(batch, sync=True)
             batch = leveldb.WriteBatch()
@@ -327,7 +328,7 @@ if __name__ == '__main__':
 
     num_features = feature_id
 
-    features_db.CompactRange('\x00', '\xff')
+    features_db.CompactRange('\x00'.encode(), '\xff'.encode())
 
     map_file.close()
 
@@ -375,9 +376,11 @@ if __name__ == '__main__':
 
     num_comparisons = 0
 
+    kvsi = iter(kvs)
+
     while True:
         try:
-            i, (key, vals) = kvs.next()
+            i, (key, vals) = next(kvsi)
             candidate_dupes = OrderedDict.fromkeys([v for _, v in vals]).keys()
 
             num_candidate_dupes = len(candidate_dupes)
@@ -411,8 +414,8 @@ if __name__ == '__main__':
 
     if possible_dupe_pairs:
         for j, (canonical_id, other_id) in enumerate(possible_dupe_pairs):
-            canonical_feature = json.loads(features_db.Get(db_key(canonical_id)))
-            other_feature = json.loads(features_db.Get(db_key(other_id)))
+            canonical_feature = json.loads(features_db.Get(db_key(canonical_id).encode()).decode())
+            other_feature = json.loads(features_db.Get(db_key(other_id).encode()).decode())
 
             canonical = db_get_address(features_db, canonical_id)
             other = db_get_address(features_db, other_id)
@@ -440,7 +443,7 @@ if __name__ == '__main__':
             out_file.write(json.dumps(response) + '\n')
     else:
         for feature_id, value in features_db.RangeIter():
-            feature_id = feature_id.lstrip('0')
+            feature_id = feature_id.lstrip('0'.encode())
             response = dupe_response(feature_id, value, dupe_pairs, features_db, dupes)
             out_file.write(json.dumps(response) + '\n')
 
